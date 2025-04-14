@@ -1,0 +1,281 @@
+<!-- public/chat.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f5f5f5;
+        }
+        
+        .header {
+            background-color: #4a89dc;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .username {
+            font-weight: bold;
+        }
+        
+        .logout-btn {
+            background-color: transparent;
+            border: 1px solid white;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .logout-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+        }
+        
+        .message.received {
+            background-color: #e5e5ea;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message.sent {
+            background-color: #4a89dc;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .sender {
+            font-size: 0.8em;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        
+        .time {
+            font-size: 0.7em;
+            color: #888;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .system-message {
+            text-align: center;
+            color: #888;
+            margin: 10px 0;
+            font-style: italic;
+        }
+        
+        .input-area {
+            display: flex;
+            padding: 15px;
+            background-color: white;
+            border-top: 1px solid #ddd;
+        }
+        
+        #message-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+        
+        #send-button {
+            background-color: #4a89dc;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            margin-left: 10px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #send-button:hover {
+            background-color: #3b7dd8;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Chat Room</h1>
+        <div>
+            <span class="username" id="username-display"></span>
+            <button class="logout-btn" id="logout-btn">Logout</button>
+        </div>
+    </div>
+    
+    <div class="chat-container">
+        <div class="messages" id="messages"></div>
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+        <button id="send-button">➤</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Auth check
+        console.log("we are here");
+        const token = localStorage.getItem('chatAppToken');
+        const username = localStorage.getItem('chatAppUsername');
+        console.log(token);
+        console.log(username);
+
+        if (!token || !username) {
+            window.location.href = '/';
+        }
+        
+        document.getElementById('username-display').textContent = username;
+        
+        // Initialize Socket.io with auth token
+        const socket = io({
+            auth: {
+                token: token
+            }
+        });
+        
+        // Socket connection handling
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            addSystemMessage('Connected to chat room');
+        });
+        
+        socket.on('connect_error', (err) => {
+            console.error('Connection error:', err.message);
+            addSystemMessage(`Connection error: ${err.message}`);
+            
+            // If authentication fails, redirect to login
+            if (err.message.includes('Authentication')) {
+                localStorage.removeItem('chatAppToken');
+                localStorage.removeItem('chatAppUsername');
+                window.location.href = '/';
+            }
+        });
+        
+        // Message handling
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        
+        // Send message function
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('chat message', message);
+                messageInput.value = '';
+            }
+        }
+        
+        // Listen for send button click
+        sendButton.addEventListener('click', sendMessage);
+        
+        // Listen for Enter key
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Receive messages
+        socket.on('chat message', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            
+            if (data.sender === username) {
+                messageElement.classList.add('sent');
+                messageElement.innerHTML = `
+                    <div class="message-content">${data.message}</div>
+                    <div class="time">${formatTime(data.time)}</div>
+                `;
+            } else {
+                messageElement.classList.add('received');
+                messageElement.innerHTML = `
+                    <div class="sender">${data.sender}</div>
+                    <div class="message-content">${data.message}</div>
+                    <div class="time">${formatTime(data.time)}</div>
+                `;
+            }
+            
+            messagesContainer.appendChild(messageElement);
+            scrollToBottom();
+        });
+        
+        // User joined/left notifications
+        socket.on('user joined', (username) => {
+            addSystemMessage(`${username} joined the chat`);
+        });
+        
+        socket.on('user left', (username) => {
+            addSystemMessage(`${username} left the chat`);
+        });
+        
+        // Add system message
+        function addSystemMessage(text) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('system-message');
+            messageElement.textContent = text;
+            messagesContainer.appendChild(messageElement);
+            scrollToBottom();
+        }
+        
+        // Format time from ISO string
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Scroll to bottom of messages
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Logout functionality
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('chatAppToken');
+            localStorage.removeItem('chatAppUsername');
+            window.location.href = '/';
+        });
+    </script>
+</body>
+</html>
